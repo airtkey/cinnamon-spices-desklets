@@ -3,11 +3,11 @@ const St = imports.gi.St;
 const GLib = imports.gi.GLib;
 const Gio = imports.gi.Gio;
 const Mainloop = imports.mainloop;
-const Lang = imports.lang;
 const Soup = imports.gi.Soup;
 
-const CONFIG_FILE = GLib.get_home_dir() + "/.config/onocoy-monitor/stations.json";
-const OUTPUT_FILE = GLib.get_home_dir() + "/.config/onocoy-monitor/zenity_out.txt";
+const CONFIG_DIR = GLib.get_user_config_dir() + "/onocoy-monitor";
+const CONFIG_FILE = CONFIG_DIR + "/stations.json";
+const OUTPUT_FILE = CONFIG_DIR + "/zenity_out.txt";
 const UPDATE_INTERVAL = 60;
 
 function OnocoyDesklet(metadata, desklet_id) {
@@ -32,12 +32,12 @@ OnocoyDesklet.prototype = {
 
     _loadConfig: function() {
         try {
-            GLib.mkdir_with_parents(GLib.get_home_dir() + "/.config/onocoy-monitor", 0o755);
-            if (GLib.file_test(CONFIG_FILE, GLib.FileTest.EXISTS)) {
-                let [ok, contents] = GLib.file_get_contents(CONFIG_FILE);
-                if (ok) this.stations = JSON.parse(new TextDecoder().decode(contents));
-            }
+            GLib.mkdir_with_parents(CONFIG_DIR, 0o755);
+            let file = Gio.File.new_for_path(CONFIG_FILE);
+            let [ok, contents] = file.load_contents(null);
+            if (ok) this.stations = JSON.parse(new TextDecoder().decode(contents));
         } catch(e) {
+            // File doesn't exist yet or is invalid - start with empty list
             this.stations = [];
         }
     },
@@ -93,10 +93,10 @@ OnocoyDesklet.prototype = {
             label: "USD/EUR",
             style: "background-color: #0f3460; color: #00d4ff; font-size: 13px; padding: 3px 8px; border-radius: 5px; border: 1px solid #00d4ff; margin-left: 11px;"
         });
-        currBtn.connect("clicked", Lang.bind(this, function() {
+        currBtn.connect("clicked", () => {
             this._currency = (this._currency === "USD") ? "EUR" : "USD";
             this._updatePriceLabel();
-        }));
+        });
 
         priceRow.add(priceIcon);
         priceRow.add(this.priceLabel, {expand: true});
@@ -114,16 +114,16 @@ OnocoyDesklet.prototype = {
             label: "➕ Add Station",
             style: "background-color: #16213e; color: #00d4ff; font-size: 15px; padding: 7px 11px; border-radius: 5px; border: 1px solid #00d4ff;"
         });
-        addBtn.connect("clicked", Lang.bind(this, this._addStation));
+        addBtn.connect("clicked", () => this._addStation());
 
         let refreshBtn = new St.Button({
             label: "🔄 Refresh",
             style: "background-color: #16213e; color: #00d4ff; font-size: 15px; padding: 7px 11px; border-radius: 5px; border: 1px solid #00d4ff;"
         });
-        refreshBtn.connect("clicked", Lang.bind(this, function() {
+        refreshBtn.connect("clicked", () => {
             this._fetchAll();
             this._fetchTokenPrice();
-        }));
+        });
 
         btnBox.add(addBtn, {expand: true});
         btnBox.add(refreshBtn, {expand: true});
@@ -186,13 +186,12 @@ OnocoyDesklet.prototype = {
                 label: "✕",
                 style: "color: #ff4444; font-size: 15px; padding: 3px 7px; border-radius: 4px; background-color: transparent;"
             });
-            (function(idx) {
-                delBtn.connect("clicked", Lang.bind(this, function() {
-                    this.stations.splice(idx, 1);
-                    this._saveConfig();
-                    this._updateStationUI();
-                }));
-            }).call(this, i);
+            let idx = i;
+            delBtn.connect("clicked", () => {
+                this.stations.splice(idx, 1);
+                this._saveConfig();
+                this._updateStationUI();
+            });
 
             row.add(statusDot);
             row.add(infoBox, {expand: true});
@@ -225,7 +224,7 @@ OnocoyDesklet.prototype = {
                 message,
                 GLib.PRIORITY_DEFAULT,
                 null,
-                Lang.bind(this, function(sess, result) {
+                (sess, result) => {
                     try {
                         let bytes = sess.send_and_read_finish(result);
                         let raw = new TextDecoder().decode(bytes.get_data());
@@ -239,7 +238,7 @@ OnocoyDesklet.prototype = {
                         this.stations[index].detail = "Error";
                     }
                     this._updateStationUI();
-                })
+                }
             );
         } catch(e) {
             this.stations[index].is_up = false;
@@ -259,7 +258,7 @@ OnocoyDesklet.prototype = {
                 message,
                 GLib.PRIORITY_DEFAULT,
                 null,
-                Lang.bind(this, function(sess, result) {
+                (sess, result) => {
                     try {
                         let bytes = sess.send_and_read_finish(result);
                         let raw = new TextDecoder().decode(bytes.get_data());
@@ -270,7 +269,7 @@ OnocoyDesklet.prototype = {
                     } catch(e) {
                         if (this.priceLabel) this.priceLabel.set_text("N/A");
                     }
-                })
+                }
             );
         } catch(e) {
             if (this.priceLabel) this.priceLabel.set_text("N/A");
@@ -287,7 +286,7 @@ OnocoyDesklet.prototype = {
                 message,
                 GLib.PRIORITY_DEFAULT,
                 null,
-                Lang.bind(this, function(sess, result) {
+                (sess, result) => {
                     try {
                         let bytes = sess.send_and_read_finish(result);
                         let raw = new TextDecoder().decode(bytes.get_data());
@@ -298,7 +297,7 @@ OnocoyDesklet.prototype = {
                         this._eurRate = 0.92;
                         this._updatePriceLabel();
                     }
-                })
+                }
             );
         } catch(e) {
             this._eurRate = 0.92;
@@ -317,7 +316,11 @@ OnocoyDesklet.prototype = {
     },
 
     _addStation: function() {
-        try { GLib.spawn_command_line_sync("rm -f " + OUTPUT_FILE); } catch(e) {}
+        // Clean up any leftover output file from a previous run
+        try {
+            let outFile = Gio.File.new_for_path(OUTPUT_FILE);
+            if (outFile.query_exists(null)) outFile.delete(null);
+        } catch(e) {}
 
         let script = '#!/bin/bash\n' +
             'result=$(zenity --forms \\\n' +
@@ -330,17 +333,39 @@ OnocoyDesklet.prototype = {
             '  echo "$result" > "' + OUTPUT_FILE + '"\n' +
             'fi\n';
 
-        let scriptFile = GLib.get_home_dir() + "/.config/onocoy-monitor/add_station.sh";
+        let scriptFile = CONFIG_DIR + "/add_station.sh";
         GLib.file_set_contents(scriptFile, script);
-        GLib.spawn_command_line_sync("chmod +x " + scriptFile);
-        GLib.spawn_command_line_async("bash " + scriptFile);
+
+        // Make executable via argv spawn (no shell interpretation)
+        try {
+            GLib.spawn_sync(
+                null,
+                ["chmod", "+x", scriptFile],
+                null,
+                GLib.SpawnFlags.SEARCH_PATH,
+                null
+            );
+        } catch(e) {}
+
+        // Launch the zenity script asynchronously via argv spawn
+        try {
+            GLib.spawn_async(
+                null,
+                ["bash", scriptFile],
+                null,
+                GLib.SpawnFlags.SEARCH_PATH,
+                null
+            );
+        } catch(e) {}
 
         let attempts = 0;
-        Mainloop.timeout_add_seconds(1, Lang.bind(this, function() {
+        Mainloop.timeout_add_seconds(1, () => {
             attempts++;
-            if (GLib.file_test(OUTPUT_FILE, GLib.FileTest.EXISTS)) {
+            let outFile = Gio.File.new_for_path(OUTPUT_FILE);
+
+            if (outFile.query_exists(null)) {
                 try {
-                    let [ok, contents] = GLib.file_get_contents(OUTPUT_FILE);
+                    let [ok, contents] = outFile.load_contents(null);
                     if (ok) {
                         let result = new TextDecoder().decode(contents).trim();
                         let parts = result.split("|");
@@ -354,20 +379,21 @@ OnocoyDesklet.prototype = {
                         }
                     }
                 } catch(e) {}
-                GLib.spawn_command_line_sync("rm -f " + OUTPUT_FILE);
+
+                try { outFile.delete(null); } catch(e) {}
                 return false;
             }
             if (attempts >= 60) return false;
             return true;
-        }));
+        });
     },
 
     _startTimer: function() {
-        this._timeout = Mainloop.timeout_add_seconds(UPDATE_INTERVAL, Lang.bind(this, function() {
+        this._timeout = Mainloop.timeout_add_seconds(UPDATE_INTERVAL, () => {
             this._fetchAll();
             this._fetchTokenPrice();
             return true;
-        }));
+        });
     },
 
     on_desklet_removed: function() {
@@ -381,4 +407,3 @@ OnocoyDesklet.prototype = {
 function main(metadata, desklet_id) {
     return new OnocoyDesklet(metadata, desklet_id);
 }
-
