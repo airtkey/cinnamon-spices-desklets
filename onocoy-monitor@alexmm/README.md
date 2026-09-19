@@ -57,10 +57,10 @@ If you have any ideas for new features, please feel free to ask me to add them!
 ## Links
 
 - Website - [airtkey.xyz](https://airtkey.xyz)
-- Onocoy - [https://onocoy.com](https://onocoy.com)
-- Onocoy Docs - [https://docs.onocoy.com](https://docs.onocoy.com)
-- Onocoy Console / Explorer - [https://console.onocoy.com/explorer](https://console.onocoy.com/explorer)
-- Onocoy Discord - [Join the Onocoy community](https://discord.com/invite/CHKxSpPQ8p)
+- onocoy - [https://onocoy.com](https://onocoy.com)
+- onocoy Docs - [https://docs.onocoy.com](https://docs.onocoy.com)
+- onocoy Console / Explorer - [https://console.onocoy.com/explorer](https://console.onocoy.com/explorer)
+- onocoy Discord - [Join the Onocoy community](https://discord.com/invite/CHKxSpPQ8p)
 
 ## Author
 
