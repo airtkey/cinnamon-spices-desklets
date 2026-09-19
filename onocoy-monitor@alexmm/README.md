@@ -1,4 +1,4 @@
-# Onocoy Monitor
+# onocoy Monitor
 
 ## Table of Contents
 
@@ -13,7 +13,7 @@
 
 ## Overview
 
-Onocoy Monitor Desklet is a simple Cinnamon desklet that displays the live status of your onocoy reference station / node directly on your desktop, using the onocoy public monitoring API.
+onocoy Monitor Desklet is a simple Cinnamon desklet that displays the live status of your onocoy reference station / node directly on your desktop, using the onocoy public monitoring API.
 
 [onocoy](https://onocoy.com) is an open GNSS data marketplace that connects RTCM 3 / NTRIP-compliant reference stations to a global, community-powered RTK correction network. With this desklet, station operators can keep an eye on their node without having to open the web console.
 
