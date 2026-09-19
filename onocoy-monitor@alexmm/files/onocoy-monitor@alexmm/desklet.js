@@ -24,22 +24,33 @@ OnocoyDesklet.prototype = {
         this._tokenPriceUSD = null;
         this._eurRate = null;
         this._loadConfig();
-        this._buildUI();
-        this._fetchAll();
-        this._fetchTokenPrice();
-        this._startTimer();
     },
 
     _loadConfig: function() {
         try {
             GLib.mkdir_with_parents(CONFIG_DIR, 0o755);
             let file = Gio.File.new_for_path(CONFIG_FILE);
-            let [ok, contents] = file.load_contents(null);
-            if (ok) this.stations = JSON.parse(new TextDecoder().decode(contents));
+            file.load_contents_async(null, (source, result) => {
+                try {
+                    let [ok, contents] = source.load_contents_finish(result);
+                    if (ok) this.stations = JSON.parse(new TextDecoder().decode(contents));
+                } catch(e) {
+                    // File doesn't exist yet or is invalid - start with empty list
+                    this.stations = [];
+                }
+                this._afterConfigLoaded();
+            });
         } catch(e) {
-            // File doesn't exist yet or is invalid - start with empty list
             this.stations = [];
+            this._afterConfigLoaded();
         }
+    },
+
+    _afterConfigLoaded: function() {
+        this._buildUI();
+        this._fetchAll();
+        this._fetchTokenPrice();
+        this._startTimer();
     },
 
     _saveConfig: function() {
@@ -317,11 +328,16 @@ OnocoyDesklet.prototype = {
 
     _addStation: function() {
         // Clean up any leftover output file from a previous run
-        try {
-            let outFile = Gio.File.new_for_path(OUTPUT_FILE);
-            if (outFile.query_exists(null)) outFile.delete(null);
-        } catch(e) {}
+        let outFile = Gio.File.new_for_path(OUTPUT_FILE);
+        outFile.delete_async(GLib.PRIORITY_DEFAULT, null, (source, result) => {
+            try { source.delete_finish(result); } catch(e) {
+                // File didn't exist - that's fine
+            }
+            this._launchAddStationScript();
+        });
+    },
 
+    _launchAddStationScript: function() {
         let script = '#!/bin/bash\n' +
             'result=$(zenity --forms \\\n' +
             '  --title="Add Station" \\\n' +
@@ -336,9 +352,9 @@ OnocoyDesklet.prototype = {
         let scriptFile = CONFIG_DIR + "/add_station.sh";
         GLib.file_set_contents(scriptFile, script);
 
-        // Make executable via argv spawn (no shell interpretation)
+        // Make executable via argv spawn (no shell interpretation), then launch
         try {
-            GLib.spawn_sync(
+            GLib.spawn_async(
                 null,
                 ["chmod", "+x", scriptFile],
                 null,
@@ -347,7 +363,6 @@ OnocoyDesklet.prototype = {
             );
         } catch(e) {}
 
-        // Launch the zenity script asynchronously via argv spawn
         try {
             GLib.spawn_async(
                 null,
@@ -363,12 +378,12 @@ OnocoyDesklet.prototype = {
             attempts++;
             let outFile = Gio.File.new_for_path(OUTPUT_FILE);
 
-            if (outFile.query_exists(null)) {
+            outFile.load_contents_async(null, (source, result) => {
                 try {
-                    let [ok, contents] = outFile.load_contents(null);
+                    let [ok, contents] = source.load_contents_finish(result);
                     if (ok) {
-                        let result = new TextDecoder().decode(contents).trim();
-                        let parts = result.split("|");
+                        let resultStr = new TextDecoder().decode(contents).trim();
+                        let parts = resultStr.split("|");
                         let id = parts[0] ? parts[0].trim().toUpperCase() : "";
                         let nickname = parts[1] ? parts[1].trim() : id;
                         if (id.length > 0) {
@@ -378,11 +393,14 @@ OnocoyDesklet.prototype = {
                             this._fetchStation(this.stations.length - 1);
                         }
                     }
-                } catch(e) {}
+                    source.delete_async(GLib.PRIORITY_DEFAULT, null, (s, r) => {
+                        try { s.delete_finish(r); } catch(e) {}
+                    });
+                } catch(e) {
+                    // File not found yet - zenity dialog still open, keep polling
+                }
+            });
 
-                try { outFile.delete(null); } catch(e) {}
-                return false;
-            }
             if (attempts >= 60) return false;
             return true;
         });
